@@ -93,6 +93,15 @@ in {
         a fast, persistent use_nix implementation for direnv'';
 
       package = mkPackageOption pkgs "nix-direnv" { };
+
+      useXDGCache = mkOption {
+        default = false;
+        type = types.bool;
+        description = ''
+          Whether to put the generated .direnv directories into $XDG_CACHE_HOME or keep it in the project directory.
+          See: https://github.com/direnv/direnv/wiki/Customizing-cache-location#human-readable-directories.
+        '';
+      };
     };
 
   };
@@ -107,7 +116,19 @@ in {
     xdg.configFile."direnv/direnvrc" = let
       text = concatStringsSep "\n" (optional (cfg.stdlib != "") cfg.stdlib
         ++ optional cfg.nix-direnv.enable
-        "source ${cfg.nix-direnv.package}/share/nix-direnv/direnvrc");
+        "source ${cfg.nix-direnv.package}/share/nix-direnv/direnvrc"
+        ++ optional (cfg.nix-direnv.enable && cfg.nix-direnv.useXDGCache) ''
+          : "''${XDG_CACHE_HOME:="''${HOME}/.cache"}"
+          declare -A direnv_layout_dirs
+          direnv_layout_dir() {
+            local hash path
+            echo "''${direnv_layout_dirs[$PWD]:=$(
+              hash="$(sha1sum - <<< "$PWD" | head -c40)"
+              path="''${PWD//[^a-zA-Z0-9]/-}"
+              echo "''${XDG_CACHE_HOME}/direnv/layouts/''${hash}''${path}"
+            )}"
+          }
+        '');
     in mkIf (text != "") { inherit text; };
 
     programs.bash.initExtra = mkIf cfg.enableBashIntegration (
